@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon May 20 12:54:13 2019
+A future statement is a directive to the compiler that a particular 
+module should be compiled using syntax or semantics that will be available
+in a specified future release of Python. The future statement is intended
+to ease migration to future versions of Python that introduce incompatible
+changes to the language. It allows use of the new features on a per-module
+basis before the release in which the feature becomes standard.
+@author: hatem
+"""
+
+from __future__ import print_function
+import keras
+from keras.datasets import cifar10
+import numpy as np
+import pickle
+from skimage import io , color
+import colorsys
+from colour import *
+import numpy
+
+"""
+https://docs.python.org/2/library/colorsys.html
+colorsys.rgb_to_hls(r, g, b)
+Convert the color from RGB coordinates to HLS coordinates
+It is most common to use 32-bit precision when training a neural network
+Regarding the division by 255, this is the maximum value of a byte
+so this will ensure that the input features are scaled 
+between 0.0 and 1.0
+"""
+def JzAzBz(image):    
+    for x in range(0, 32):
+        for x1 in range(0, 32):
+            xyz= (image[x][x1][0] ,image[x][x1][1] ,image[x][x1][2])
+            image[x][x1][0] ,image[x][x1][1] ,image[x][x1][2] = XYZ_to_JzAzBz(xyz)
+    return image
+
+def convertHSL(image):    
+    for x in range(0, 32):
+        for x1 in range(0, 32):
+            image[x][x1][0] ,image[x][x1][1] ,image[x][x1][2]= colorsys.rgb_to_hls(image[x][x1][0] ,image[x][x1][1] ,image[x][x1][2])            
+    return image
+
+def srgb2rgb(c):    
+    if (c > 0.03928):
+       c= ((c + 0.055)/1.055)**2.4 
+    else: c= c/12.92   
+    return c
+
+#linearized by inverting the gamma correction
+def normalised_srgb(image):    
+    for x in range(0, 32):
+        for x1 in range(0, 32):
+            image[x][x1][0] = srgb2rgb(image[x][x1][0])
+            image[x][x1][1] = srgb2rgb(image[x][x1][1])
+            image[x][x1][2] = srgb2rgb(image[x][x1][2])
+    return image
+
+
+def convert(colorspace , subtract_pixelmean):
+    filenam="RGB"
+    num_classes = 10
+    # Subtracting pixel mean improves accuracy True or False
+    subtract_pixel_mean = subtract_pixelmean
+    
+    # Model parameter
+    # ----------------------------------------------------------------------------
+    #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
+    # Model     |  n   | ResNet v1 | ResNet v1 | ResNet v2 | ResNet v2 | GTX1080Ti
+    #           |v1(v2)| %Accuracy | %Accuracy | %Accuracy | %Accuracy | v1 (v2)
+    # ----------------------------------------------------------------------------
+    # ResNet20  | 3 (2)| 92.16     | 91.25     | -----     | -----     | 35 (---)
+    # ResNet32  | 5(NA)| 92.46     | 92.49     | NA        | NA        | 50 ( NA)
+    # ResNet44  | 7(NA)| 92.50     | 92.83     | NA        | NA        | 70 ( NA)
+    # ResNet56  | 9 (6)| 92.71     | 93.03     | 93.01     | NA        | 90 (100)
+    # ResNet110 |18(12)| 92.65     | 93.39+-.16| 93.15     | 93.63     | 165(180)
+    # ResNet164 |27(18)| -----     | 94.07     | -----     | 94.54     | ---(---)
+    # ResNet1001| (111)| -----     | 92.39     | -----     | 95.08+-.14| ---(---)
+    # ---------------------------------------------------------------------------
+    
+    
+    # Load the CIFAR10 data.
+    (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+    
+    # Input image dimensions.
+    #input_shape = x_train.shape[1:]
+
+    # Normalize data.
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
+    
+    
+    #conver to HSL
+    if colorspace=="HSL" :
+        filenam="HSL"
+        for x in range(x_train.shape[0]):
+            print(x)
+            x_train[x]=convertHSL(x_train[x])
+            
+        for x1 in range(x_test.shape[0]):
+            print(x1)
+            x_test[x1]=convertHSL(x_test[x1])
+
+    #conver to HSV
+    if colorspace=="HSV" :
+        filenam="HSV"
+        for x in range(x_train.shape[0]):
+            print(x)
+            x_train[x] = color.rgb2hsv(x_train[x])
+            
+        for x1 in range(x_test.shape[0]):
+            print(x1)
+            x_test[x1] = color.rgb2hsv(x_test[x1])  
+            
+    #conver to XYZ
+    if colorspace=="XYZ" :
+        filenam="XYZ"
+        for x in range(x_train.shape[0]):
+            x_train[x] = color.rgb2xyz(x_train[x])          
+        for x1 in range(x_test.shape[0]):
+            x_test[x1] = color.rgb2xyz(x_test[x1])  
+            
+    #conver to JzAzBz
+    if colorspace=="JzAzBz" :
+        with open('./XYZcifar10_normalized.pkl', 'rb') as f:
+            (x_train, y_train), (x_test, y_test) = pickle.load(f) 
+        filenam="JzAzBz"      
+        for x in range(x_train.shape[0]):
+            x_train[x] = JzAzBz(x_train[x])
+        for x1 in range(x_test.shape[0]):
+            x_test[x1] = JzAzBz(x_test[x1])    
+        
+    #conver to LUV
+    if colorspace=="LUV" :
+        filenam="LUV"
+        for x in range(x_train.shape[0]):
+            print(x)
+            x_train[x] = color.rgb2luv(x_train[x]) 
+            
+        for x1 in range(x_test.shape[0]):
+            print(x1)
+            x_test[x1] = color.rgb2luv(x_test[x1])  
+    #conver to LAB
+    if colorspace=="LAB" :
+        filenam="LAB"
+        for x in range(x_train.shape[0]):
+            print(x)
+            x_train[x] = color.rgb2lab(x_train[x]) 
+            
+        for x1 in range(x_test.shape[0]):
+            print(x1)
+            x_test[x1] = color.rgb2lab(x_test[x1])  
+            
+    #conver to YUV
+    if colorspace=="YUV" :
+        filenam="YUV"
+        for x in range(x_train.shape[0]):
+            print(x)
+            x_train[x] = color.rgb2yuv(x_train[x]) 
+            
+        for x1 in range(x_test.shape[0]):
+            print(x1)
+            x_test[x1] = color.rgb2yuv(x_test[x1])
+            
+    
+    
+    # If subtract pixel mean is enabled
+    if subtract_pixel_mean:
+        filenam=filenam+"subtract_pixel_mean"
+        x_train_mean = np.mean(x_train, axis=0)
+        print(x_train_mean)
+        x_train -= x_train_mean
+        x_test -= x_train_mean
+    
+    print('x_train shape:', x_train.shape)
+    print(x_train.shape[0], 'train samples')
+    print(x_test.shape[0], 'test samples')
+    print('y_train shape:', y_train.shape)
+    
+    # Convert class vectors to binary class matrices.
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    y_test = keras.utils.to_categorical(y_test, num_classes)
+    
+    filenam = filenam + "cifar10_normalized.pkl"
+    print(filenam)
+    with open(filenam, 'wb') as f:
+        pickle.dump(((x_train, y_train), (x_test, y_test)), f)
+    print("finish")
+    return filenam
+
+"""    
+convert("RGB", True)
+convert("RGB", False)
+
+convert("HSL", True)
+convert("HSL", False)
+
+convert("HSV", True)
+convert("HSV", False)
+
+convert("LUV", True)
+convert("LUV", False)
+
+convert("YUV", True)
+convert("YUV", False)
+
+"""
+
+#convert("XYZ", False)
+converted_filenam = convert("RGB", True)
+
+import pickle
+import matplotlib.pyplot as plt  
+with open('./'+converted_filenam, 'rb') as f:
+    (x_train, y_train), (x_test, y_test) = pickle.load(f)    
+plt.imshow(x_train[7])
+plt.show()
+io.imsave(converted_filenam+'B1_7.png',x_train[7])
+
+
